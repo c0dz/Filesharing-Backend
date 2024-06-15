@@ -1,0 +1,15 @@
+*.pyc
+*.pyo
+__pycache__/
+*.sqlite3
+*.swp
+*.swo
+*.log
+*.bak
+*.tmp
+*.db
+*.db-journal
+media/
+static/
+.env
+venv/
