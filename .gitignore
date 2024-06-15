@@ -13,3 +13,5 @@ media/
 static/
 .env
 venv/
+.env
+.vscode/
