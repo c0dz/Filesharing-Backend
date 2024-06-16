@@ -1,5 +1,6 @@
 import math
 from decouple import config
+from django.http import HttpResponse
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework import status
@@ -15,6 +16,15 @@ from django.core.paginator import Paginator
 from core import settings
 from rest_framework import generics
 from django.db import transaction
+
+
+def get_s3_resource():
+    return boto3.resource(
+        "s3",
+        endpoint_url=settings.AWS_S3_ENDPOINT_URL,
+        aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+    )
 
 
 class FileUploadView(APIView):
@@ -40,15 +50,10 @@ class FileUploadView(APIView):
                 file_details = serializer.save()
 
                 file_path = serializer.file_path(
-                    file_id=file_details,
+                    file_id=file_details.id,
                 )
 
-                s3_resource = boto3.resource(
-                    "s3",
-                    endpoint_url=settings.AWS_S3_ENDPOINT_URL,
-                    aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-                    aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-                )
+                s3_resource = get_s3_resource()
             except Exception as exc:
                 transaction.set_rollback(True)
                 return Response(
@@ -129,3 +134,117 @@ class FileDataListView(generics.ListAPIView):
         p = math.pow(1024, i)
         s = size_bytes / p
         return (round(s, 3), size_name[i])
+
+
+class DeleteFileView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, file_id):
+        try:
+            file = FileModel.objects.get(id=file_id)
+            file_permission = FilePermissionModel.objects.get(
+                file=file, user=request.user, permission="F"
+            )
+            print("PASS1")
+        except FileModel.DoesNotExist:
+            return Response(
+                {"message": "File not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+        except FilePermissionModel.DoesNotExist:
+            return Response(
+                {"message": "Permission denied"}, status=status.HTTP_403_FORBIDDEN
+            )
+        except Exception as exc:
+            return Response(
+                {"message": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        s3_resource = get_s3_resource()
+        print("PASS2")
+
+        try:
+            self.delete_file_from_s3(s3_resource, request.user.id, file)
+            print("PASS3")
+
+            self.delete_file_records(file, file_permission)
+            print("PASS4")
+
+            return Response(
+                {"message": "File deleted successfully"}, status=status.HTTP_200_OK
+            )
+        except ClientError as e:
+            return Response(
+                {"message": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        except Exception as exc:
+            return Response(
+                {"message": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    def delete_file_from_s3(self, s3_resource, user_id, file):
+        bucket_name = settings.AWS_STORAGE_BUCKET_NAME
+        object_name = f"user_{user_id}/{file.id}_{file.original_filename}"
+        bucket = s3_resource.Bucket(bucket_name)
+        s3_object = bucket.Object(object_name)
+        s3_object.delete()
+
+    def delete_file_records(self, file, file_permission):
+        # delete all the permissions related to the file
+        shared_permissions = FilePermissionModel.objects.filter(file=file)
+        file_permission.delete()
+        shared_permissions.delete()
+
+        # delete the file
+        file.delete()
+
+
+class DownloadFileView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, file_id):
+        try:
+            user = request.user
+            file = FileModel.objects.get(id=file_id)
+            file_permission = FilePermissionModel.objects.get(
+                file=file, user=user, permission__in=["R", "F"]
+            )
+
+            s3_client = boto3.client(
+                "s3",
+                endpoint_url=settings.AWS_S3_ENDPOINT_URL,
+                aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+                aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+            )
+        except FileModel.DoesNotExist:
+            return Response(
+                {"message": "File not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+        except FilePermissionModel.DoesNotExist:
+            return Response(
+                {"message": "Permission denied"}, status=status.HTTP_403_FORBIDDEN
+            )
+        except Exception as exc:
+            return Response(
+                {"message": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        try:
+            bucket = settings.AWS_STORAGE_BUCKET_NAME
+            object_name = f"user_{user.id}/{file.id}_{file.original_filename}"
+
+            response = s3_client.generate_presigned_url(
+                "get_object",
+                Params={"Bucket": bucket, "Key": object_name},
+                ExpiresIn=60 * 5,  # 5 minutes to expire
+            )
+
+            return Response({"url": response}, status=status.HTTP_200_OK)
+
+        except ClientError as e:
+            return Response(
+                {"message": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        except Exception as exc:
+            return Response(
+                {"message": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

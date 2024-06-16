@@ -31,10 +31,10 @@ class FilePermissionModel(models.Model):
     ]
 
     file = models.ForeignKey(
-        FileModel, on_delete=models.PROTECT, related_name="permissions"
+        FileModel, on_delete=models.CASCADE, related_name="permissions"
     )
     user = models.ForeignKey(
-        "accounts.UserModel", on_delete=models.PROTECT, related_name="permissions"
+        "accounts.UserModel", on_delete=models.CASCADE, related_name="permissions"
     )
     permission = models.CharField(max_length=10, choices=PERMISSION_CHOICES)
     created_at = models.DateTimeField(auto_now_add=True)

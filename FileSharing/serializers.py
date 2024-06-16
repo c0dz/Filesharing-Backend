@@ -62,13 +62,13 @@ class FileDataSerializer(serializers.ModelSerializer):
             data["unit"] = "B"
         elif size < 1024**2:
             # with 2 decimal places
-            data["size"] = (size / 1024).__format__(".2f")
+            data["size"] = (size / 1024).__format__(".0f")
             data["unit"] = "KB"
         elif size < 1024**3:
-            data["size"] = (size / (1024**2)).__format__(".2f")
+            data["size"] = (size / (1024**2)).__format__(".0f")
             data["unit"] = "MB"
         else:
-            data["size"] = (size / (1024**3)).__format__(".2f")
+            data["size"] = (size / (1024**3)).__format__(".0f")
             data["unit"] = "GB"
 
         # file permission
