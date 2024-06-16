@@ -14,4 +14,5 @@ urlpatterns = [
     path(
         "verify/<user_id>/<token>/", views.VerifyLinkView.as_view(), name="verify_link"
     ),
+    path("profile/", views.ProfileView.as_view(), name="profile"),
 ]

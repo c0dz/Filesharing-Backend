@@ -2,8 +2,12 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from accounts.models import UserModel, VerificationModel
-from accounts.serializers import RegisterSerializer, SendVerificationEmailSerializer
-from rest_framework.permissions import AllowAny
+from accounts.serializers import (
+    ProfileSerializer,
+    RegisterSerializer,
+    SendVerificationEmailSerializer,
+)
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from django.utils import timezone
 
 
@@ -53,3 +57,13 @@ class VerifyLinkView(APIView):
                     user.save()
                     link_verification.delete()
                     return Response(status=status.HTTP_200_OK)
+
+
+class ProfileView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        serializer = ProfileSerializer(instance=user)
+
+        return Response(serializer.data, status=status.HTTP_200_OK)

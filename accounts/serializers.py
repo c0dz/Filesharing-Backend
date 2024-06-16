@@ -137,3 +137,9 @@ class SendVerificationEmailSerializer(serializers.Serializer):
         from_email = "abcd@gmail.com"
         recipient_list = [email]
         send_mail(subject, message, from_email, recipient_list)
+
+
+class ProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserModel
+        fields = ("id", "username", "photo")

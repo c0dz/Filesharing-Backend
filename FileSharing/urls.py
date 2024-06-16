@@ -4,4 +4,5 @@ from filesharing import views
 
 urlpatterns = [
     path("upload/", views.FileUploadView.as_view(), name="upload"),
+    path("fetch/", views.FileDataListView.as_view(), name="filedata-list"),
 ]

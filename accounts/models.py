@@ -8,6 +8,12 @@ class UserModel(AbstractUser):
         primary_key=True, default=uuid.uuid4, editable=False, unique=True
     )
     email = models.EmailField(unique=True)
+    photo = models.ImageField(
+        upload_to="user_photos",
+        default="user_photos/default.png",
+        null=True,
+        blank=True,
+    )
     is_active = models.BooleanField(default=False)
 
     def __str__(self):

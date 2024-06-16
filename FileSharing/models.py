@@ -7,10 +7,9 @@ def user_directory_path(instance, filename):
 
 
 class FileModel(models.Model):
-    cloud_name = models.UUIDField(
+    id = models.UUIDField(
         primary_key=True, default=uuid.uuid4, editable=False, unique=True
     )
-    file = models.FileField(upload_to=user_directory_path)
     upload_date = models.DateTimeField(auto_now_add=True)
     original_filename = models.CharField(max_length=255)
     size = models.PositiveIntegerField()
@@ -22,13 +21,13 @@ class FileModel(models.Model):
         verbose_name_plural = "Files"
 
     def __str__(self):
-        return self.name
+        return self.original_filename
 
 
 class FilePermissionModel(models.Model):
     PERMISSION_CHOICES = [
-        ("read", "Read Permission"),
-        ("full", "Full Permission"),
+        ("R", "Read Permission"),
+        ("F", "Full Permission"),
     ]
 
     file = models.ForeignKey(
