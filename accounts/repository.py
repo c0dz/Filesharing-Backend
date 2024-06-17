@@ -63,6 +63,12 @@ class UserRepository(Repository):
         user.is_active = True
         user.save()
 
+    def get_all_active_users_except_current(
+        self, current_user: UserModel
+    ) -> models.QuerySet:
+        """Get all active users except the current user."""
+        return self.filter(is_active=True).exclude(id=current_user.id)
+
 
 class VerificationRepository(Repository):
     """Repository for Verification model."""

@@ -1,11 +1,17 @@
 from rest_framework import serializers
 import datetime
 from accounts.models import UserModel
-from filesharing.models import FileModel, FilePermissionModel
+from accounts.repository import UserRepository
+from filesharing.models import FileModel
+from .repository import FileRepository
 
 
 class FileUploadSerializer(serializers.Serializer):
     file = serializers.FileField()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.file_repository = FileRepository()
 
     def validate_file(self, value):
         if value.size > 350 * 1024 * 1024:  # 350MB size limit
@@ -21,18 +27,9 @@ class FileUploadSerializer(serializers.Serializer):
         return f"user_{user_id}/{file_id}_{original_filename}"
 
     def create(self, validated_data):
-        file = validated_data.pop("file")
-        file_extension = file.name.split(".")[-1]
-        file_instance = FileModel.objects.create(
-            original_filename=file.name,
-            size=file.size,
-            file_extension=file_extension,
-            **validated_data,
-        )
-        file_permission_instance = FilePermissionModel.objects.create(
-            file=file_instance, user=self.context["user"], permission="F"
-        )
-        return file_instance
+        owner = self.context["user"]
+        new_file = self.file_repository.upload_file(validated_data, owner)
+        return new_file
 
 
 class ListFilesSerializer(serializers.ModelSerializer):
@@ -51,6 +48,10 @@ class FileDataSerializer(serializers.ModelSerializer):
             "size",
             "upload_date",
         ]
+
+    def __init__(self, instance=None, data=..., **kwargs):
+        super().__init__(instance, data, **kwargs)
+        self.file_repository = FileRepository()
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -73,10 +74,9 @@ class FileDataSerializer(serializers.ModelSerializer):
             data["unit"] = "GB"
 
         # file permission
-        permission = FilePermissionModel.objects.get(
+        data["permission"] = self.file_repository.get_file_permission_for_user(
             file=instance, user=self.context["user"]
         )
-        data["permission"] = permission.permission
 
         return data
 
@@ -86,11 +86,15 @@ class ShareFileProfileSerializer(serializers.ModelSerializer):
         model = UserModel
         fields = ("id", "email", "first_name", "last_name", "photo")
 
+    def __init__(self, instance=None, data=..., **kwargs):
+        super().__init__(instance, data, **kwargs)
+        self.file_repository = FileRepository()
+
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        data["is_shared"] = FilePermissionModel.objects.filter(
+        data["is_shared"] = self.file_repository.check_permission(
             file=self.context["file"], user=instance
-        ).exists()
+        )
 
         return data
 
@@ -99,9 +103,15 @@ class ShareFileSerializer(serializers.Serializer):
     user_id = serializers.UUIDField()
     status = serializers.CharField()
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.user_repository = UserRepository()
+        self.file_repository = FileRepository()
+
     def validate_user_id(self, value):
         try:
-            user = UserModel.objects.get(pk=value)
+            user = self.user_repository.get_or_raise(pk=value)
+            # user = UserModel.objects.get(pk=value)
             owner = self.context["owner"]
             file = self.context["file"]
 
@@ -114,10 +124,8 @@ class ShareFileSerializer(serializers.Serializer):
                 )
 
             if (
-                FilePermissionModel.objects.get(
-                    file=self.context["file"], user=owner
-                ).permission
-                == "R"
+                self.file_repository.get_file_permission_for_user(file=file, user=owner)
+                != "F"
             ):
                 raise serializers.ValidationError(
                     "You do not have permission to share the file."
@@ -136,8 +144,10 @@ class ShareFileSerializer(serializers.Serializer):
         file = self.context["file"]
         user = UserModel.objects.get(pk=validated_data["user_id"])
         if validated_data["status"] == "access":
-            FilePermissionModel.objects.create(file=file, user=user, permission="R")
+            self.file_repository.grant_read_permission(file=file, user=user)
+            # FilePermissionModel.objects.create(file=file, user=user, permission="R")
         elif validated_data["status"] == "denied":
-            FilePermissionModel.objects.filter(file=file, user=user).delete()
+            self.file_repository.revoke_read_permission(file=file, user=user)
+            # FilePermissionModel.objects.filter(file=file, user=user).delete()
 
         return file

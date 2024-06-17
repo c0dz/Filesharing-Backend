@@ -6,6 +6,7 @@ import boto3
 from botocore.exceptions import ClientError
 from rest_framework.permissions import IsAuthenticated
 from accounts.models import UserModel
+from accounts.repository import UserRepository
 from filesharing.models import FileModel, FilePermissionModel
 from filesharing.serializers import (
     FileDataSerializer,
@@ -18,6 +19,7 @@ from core import settings
 from rest_framework import generics
 from django.db import transaction
 from .utils import S3ResourceSingleton, S3ClientSingleton
+from .repository import FileRepository
 
 
 class FileUploadView(APIView):
@@ -71,13 +73,8 @@ class FileDataListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        # get file's related to the user from FilePermissionModel
-        files = FilePermissionModel.objects.filter(user=self.request.user)
-        # get the files details from FileModel
-        file_ids = files.values_list("file_id", flat=True)
-
-        files_data = FileModel.objects.filter(id__in=file_ids).order_by("-upload_date")
-        return files_data
+        file_repository = FileRepository()
+        return file_repository.get_all_files_for_user(user=self.request.user)
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
@@ -132,10 +129,16 @@ class DeleteFileView(APIView):
 
     def delete(self, request, file_id):
         try:
-            file = FileModel.objects.get(id=file_id)
-            file_permission = FilePermissionModel.objects.get(
-                file=file, user=request.user, permission="F"
-            )
+            user = request.user
+            file_repository = FileRepository()
+            file = file_repository.get_or_raise(pk=file_id)
+
+            if not file_repository.check_user_is_owner(file, user):
+                return Response(
+                    {"message": "Permission denied"}, status=status.HTTP_403_FORBIDDEN
+                )
+            file_permissions = file_repository.get_all_file_permissions(file)
+
         except FileModel.DoesNotExist:
             return Response(
                 {"message": "File not found"}, status=status.HTTP_404_NOT_FOUND
@@ -152,9 +155,14 @@ class DeleteFileView(APIView):
         s3_resource = S3ResourceSingleton()
 
         try:
-            self.delete_file_from_s3(s3_resource, request.user.id, file)
+            file_repository.delete_file_from_s3(
+                s3_resource=s3_resource,
+                user=user,
+                file=file,
+                bucket_name=settings.AWS_STORAGE_BUCKET_NAME,
+            )
 
-            self.delete_file_records(file, file_permission)
+            file_repository.delete_file_from_db(file, file_permissions)
 
             return Response(
                 {"message": "File deleted successfully"}, status=status.HTTP_200_OK
@@ -168,35 +176,21 @@ class DeleteFileView(APIView):
                 {"message": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-    def delete_file_from_s3(self, s3_resource, user_id, file):
-        bucket_name = settings.AWS_STORAGE_BUCKET_NAME
-        object_name = f"user_{user_id}/{file.id}_{file.original_filename}"
-        bucket = s3_resource.Bucket(bucket_name)
-        s3_object = bucket.Object(object_name)
-        s3_object.delete()
-
-    def delete_file_records(self, file, file_permission):
-        # delete all the permissions related to the file
-        shared_permissions = FilePermissionModel.objects.filter(file=file)
-        file_permission.delete()
-        shared_permissions.delete()
-
-        # delete the file
-        file.delete()
-
 
 class DownloadFileView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, file_id):
         try:
+            file_repository = FileRepository()
             user = request.user
-            file = FileModel.objects.get(id=file_id)
-            file_permission = FilePermissionModel.objects.get(
-                file=file, user=user, permission__in=["R", "F"]
-            )
-            # owner
-            owner = FilePermissionModel.objects.get(file=file, permission="F").user
+            file = file_repository.get_or_raise(pk=file_id)
+            if not file_repository.check_permission(file, user):
+                return Response(
+                    {"message": "Permission denied"}, status=status.HTTP_403_FORBIDDEN
+                )
+
+            owner = file_repository.get_file_owner(file)
 
             s3_client = S3ClientSingleton()
         except FileModel.DoesNotExist:
@@ -237,12 +231,13 @@ class DownloadFileView(APIView):
 class UserSharedListView(APIView):
     permission_classes = [IsAuthenticated]
 
-    # get all the active users except the current user
     def get(self, request, file_id):
         try:
+            file_repository = FileRepository()
+            user_repository = UserRepository()
             user = request.user
-            file = FileModel.objects.get(id=file_id)
-            users = UserModel.objects.filter(is_active=True).exclude(id=user.id)
+            file = file_repository.get_or_raise(pk=file_id)
+            users = user_repository.get_all_active_users_except_current(user)
             serializer = ShareFileProfileSerializer(
                 users, many=True, context={"file": file}
             )
@@ -268,7 +263,8 @@ class ShareFileView(APIView):
         user = request.user
         received_data = request.data
         try:
-            file = FileModel.objects.get(id=file_id)
+            file_repository = FileRepository()
+            file = file_repository.get_or_raise(pk=file_id)
             serializer = ShareFileSerializer(
                 data=received_data, many=True, context={"file": file, "owner": user}
             )
