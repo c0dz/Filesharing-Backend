@@ -1,5 +1,6 @@
 from rest_framework import serializers
 import datetime
+from accounts.models import UserModel
 from filesharing.models import FileModel, FilePermissionModel
 
 
@@ -78,3 +79,65 @@ class FileDataSerializer(serializers.ModelSerializer):
         data["permission"] = permission.permission
 
         return data
+
+
+class ShareFileProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserModel
+        fields = ("id", "email", "first_name", "last_name", "photo")
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data["is_shared"] = FilePermissionModel.objects.filter(
+            file=self.context["file"], user=instance
+        ).exists()
+
+        return data
+
+
+class ShareFileSerializer(serializers.Serializer):
+    user_id = serializers.UUIDField()
+    status = serializers.CharField()
+
+    def validate_user_id(self, value):
+        try:
+            user = UserModel.objects.get(pk=value)
+            owner = self.context["owner"]
+            file = self.context["file"]
+
+            if not user.is_active:
+                raise serializers.ValidationError("User is not verified.")
+
+            if user.id == owner.id:
+                raise serializers.ValidationError(
+                    "You cannot share the file with yourself :)"
+                )
+
+            if (
+                FilePermissionModel.objects.get(
+                    file=self.context["file"], user=owner
+                ).permission
+                == "R"
+            ):
+                raise serializers.ValidationError(
+                    "You do not have permission to share the file."
+                )
+
+        except UserModel.DoesNotExist:
+            raise serializers.ValidationError("User does not exist.")
+        return value
+
+    def validate_status(self, value):
+        if value not in ["denied", "access"]:
+            raise serializers.ValidationError("Invalid status.")
+        return value
+
+    def create(self, validated_data):
+        file = self.context["file"]
+        user = UserModel.objects.get(pk=validated_data["user_id"])
+        if validated_data["status"] == "access":
+            FilePermissionModel.objects.create(file=file, user=user, permission="R")
+        elif validated_data["status"] == "denied":
+            FilePermissionModel.objects.filter(file=file, user=user).delete()
+
+        return file

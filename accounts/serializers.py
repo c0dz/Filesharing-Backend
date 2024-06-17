@@ -143,3 +143,6 @@ class ProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserModel
         fields = ("id", "username", "photo")
+
+
+

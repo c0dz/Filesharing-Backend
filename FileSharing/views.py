@@ -7,10 +7,13 @@ from rest_framework import status
 import boto3
 from botocore.exceptions import ClientError
 from rest_framework.permissions import IsAuthenticated
+from accounts.models import UserModel
 from filesharing.models import FileModel, FilePermissionModel
 from filesharing.serializers import (
     FileDataSerializer,
     FileUploadSerializer,
+    ShareFileProfileSerializer,
+    ShareFileSerializer,
 )
 from django.core.paginator import Paginator
 from core import settings
@@ -243,6 +246,61 @@ class DownloadFileView(APIView):
         except ClientError as e:
             return Response(
                 {"message": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        except Exception as exc:
+            return Response(
+                {"message": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class UserSharedListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    # get all the active users except the current user
+    def get(self, request, file_id):
+        try:
+            user = request.user
+            file = FileModel.objects.get(id=file_id)
+            users = UserModel.objects.filter(is_active=True).exclude(id=user.id)
+            serializer = ShareFileProfileSerializer(
+                users, many=True, context={"file": file}
+            )
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except FileModel.DoesNotExist:
+            return Response(
+                {"message": "File not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+        except UserModel.DoesNotExist:
+            return Response(
+                {"message": "No users found"}, status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as exc:
+            return Response(
+                {"message": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class ShareFileView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def put(self, request, file_id):
+        user = request.user
+        received_data = request.data
+        print(received_data)
+        try:
+            file = FileModel.objects.get(id=file_id)
+            serializer = ShareFileSerializer(
+                data=received_data, many=True, context={"file": file, "owner": user}
+            )
+            serializer.is_valid(raise_exception=True)
+
+            serializer.save()
+            return Response(
+                {"message": "Sharing List Updated."}, status=status.HTTP_201_CREATED
+            )
+        except FileModel.DoesNotExist:
+            return Response(
+                {"message": "File not found"}, status=status.HTTP_404_NOT_FOUND
             )
         except Exception as exc:
             return Response(
