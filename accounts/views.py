@@ -9,6 +9,7 @@ from accounts.serializers import (
 )
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from django.utils import timezone
+from .repository import UserRepository, VerificationRepository
 
 
 class RegisterView(APIView):
@@ -34,16 +35,16 @@ class VerifyLinkView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def get(self, request, user_id, token):
-        # check if the user exists
         try:
-            print(user_id, token)
-            user = UserModel.objects.get(pk=user_id)
+            user_repository = UserRepository()
+            verification_repository = VerificationRepository()
+            user = user_repository.get_or_raise(pk=user_id)
         except UserModel.DoesNotExist:
             return Response(status=status.HTTP_400_BAD_REQUEST)
         else:
             # check if the token is valid
             try:
-                link_verification = VerificationModel.objects.get(
+                link_verification = verification_repository.get_or_raise(
                     user=user, token=token
                 )
             except VerificationModel.DoesNotExist:
@@ -53,8 +54,7 @@ class VerifyLinkView(APIView):
                 if link_verification.expires_at < timezone.now():
                     return Response(status=status.HTTP_400_BAD_REQUEST)
                 else:
-                    user.is_active = True
-                    user.save()
+                    user_repository.activate_user(user)
                     link_verification.delete()
                     return Response(status=status.HTTP_200_OK)
 

@@ -4,7 +4,7 @@ from rest_framework import serializers
 from django.core.validators import EmailValidator
 from accounts.models import UserModel, VerificationModel
 from django.core.mail import send_mail
-from rest_framework.validators import UniqueValidator
+from .repository import UserRepository, VerificationRepository
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -15,8 +15,12 @@ class RegisterSerializer(serializers.ModelSerializer):
         model = UserModel
         fields = ["username", "email", "password", "confirm_password"]
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.user_repository = UserRepository()
+
     def validate_username(self, value):
-        # at least 4 characters
+        # at least 4 letters
         if len(value) < 4:
             raise serializers.ValidationError(
                 "Username must be at least 4 characters long."
@@ -26,14 +30,16 @@ class RegisterSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Username must contain only English letters."
             )
-        if UserModel.objects.filter(username=value).exists():
-            raise serializers.ValidationError("Username already exists.")
+
+        # Commented out: it gets checked automatically
+        # if self.user_repository.check_username_exists(value):
+        #     raise serializers.ValidationError("Username already exists.")
 
         return value
 
     def validate_email(self, value):
         EmailValidator()(value)
-        if UserModel.objects.filter(email=value).exists():
+        if self.user_repository.check_email_exists(value):
             raise serializers.ValidationError("Email already exists.")
 
         return value
@@ -84,29 +90,30 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         validated_data.pop("confirm_password")
-        user = UserModel.objects.create_user(**validated_data)
+        user = self.user_repository.create_user(**validated_data)
         return user
 
 
 class SendVerificationEmailSerializer(serializers.Serializer):
     email = serializers.EmailField()
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.user_repository = UserRepository()
+        self.verification_repository = VerificationRepository()
+
     def validate(self, attrs):
         email = attrs["email"]
         # wait for 1 second, then check if the user exists
 
-        user = UserModel.objects.filter(email=email)
+        user = self.user_repository.filter(email=email)
 
-        # the user must exist, if not we try again, it takes time to register the user, so we wait
+        if not user.exists():
+            raise serializers.ValidationError("User does not exist.")
 
-        # if not user.exists():
-        #     raise serializers.ValidationError("User does not exist.")
-        # # check if email is already verified
-        # if user.first().is_active:
-        #     print("Email is already verified.")
-        #     raise serializers.ValidationError("Email is already verified.")
+        # if user[0].is_active:
+        #     raise serializers.ValidationError("User is already verified.")
 
-        print("Validated")
         return attrs
 
     def generate_token(self):
@@ -116,12 +123,12 @@ class SendVerificationEmailSerializer(serializers.Serializer):
         token = self.generate_token()
         expires_at = timezone.now() + timezone.timedelta(hours=1)
         email = self.validated_data["email"]
-        print(email)
         user = UserModel.objects.get(email=email)
 
-        link_verification = VerificationModel.objects.create(
+        link_verification = self.verification_repository.create(
             user=user, token=token, expires_at=expires_at
         )
+
         verification_url = (
             f"http://localhost:5173/verification/{user.id}/{link_verification.token}/"
         )
@@ -143,6 +150,3 @@ class ProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserModel
         fields = ("id", "username", "photo")
-
-
-

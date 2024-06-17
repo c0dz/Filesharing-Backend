@@ -1,6 +1,4 @@
 import math
-from decouple import config
-from django.http import HttpResponse
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework import status
@@ -19,15 +17,7 @@ from django.core.paginator import Paginator
 from core import settings
 from rest_framework import generics
 from django.db import transaction
-
-
-def get_s3_resource():
-    return boto3.resource(
-        "s3",
-        endpoint_url=settings.AWS_S3_ENDPOINT_URL,
-        aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-        aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-    )
+from .utils import S3ResourceSingleton, S3ClientSingleton
 
 
 class FileUploadView(APIView):
@@ -56,7 +46,7 @@ class FileUploadView(APIView):
                     file_id=file_details.id,
                 )
 
-                s3_resource = get_s3_resource()
+                s3_resource = S3ResourceSingleton()
             except Exception as exc:
                 transaction.set_rollback(True)
                 return Response(
@@ -85,9 +75,7 @@ class FileDataListView(generics.ListAPIView):
         files = FilePermissionModel.objects.filter(user=self.request.user)
         # get the files details from FileModel
         file_ids = files.values_list("file_id", flat=True)
-        # print file_ids to see the output
-        for file_id in file_ids:
-            print(file_id)
+
         files_data = FileModel.objects.filter(id__in=file_ids).order_by("-upload_date")
         return files_data
 
@@ -148,7 +136,6 @@ class DeleteFileView(APIView):
             file_permission = FilePermissionModel.objects.get(
                 file=file, user=request.user, permission="F"
             )
-            print("PASS1")
         except FileModel.DoesNotExist:
             return Response(
                 {"message": "File not found"}, status=status.HTTP_404_NOT_FOUND
@@ -162,15 +149,12 @@ class DeleteFileView(APIView):
                 {"message": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-        s3_resource = get_s3_resource()
-        print("PASS2")
+        s3_resource = S3ResourceSingleton()
 
         try:
             self.delete_file_from_s3(s3_resource, request.user.id, file)
-            print("PASS3")
 
             self.delete_file_records(file, file_permission)
-            print("PASS4")
 
             return Response(
                 {"message": "File deleted successfully"}, status=status.HTTP_200_OK
@@ -211,13 +195,10 @@ class DownloadFileView(APIView):
             file_permission = FilePermissionModel.objects.get(
                 file=file, user=user, permission__in=["R", "F"]
             )
+            # owner
+            owner = FilePermissionModel.objects.get(file=file, permission="F").user
 
-            s3_client = boto3.client(
-                "s3",
-                endpoint_url=settings.AWS_S3_ENDPOINT_URL,
-                aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-                aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-            )
+            s3_client = S3ClientSingleton()
         except FileModel.DoesNotExist:
             return Response(
                 {"message": "File not found"}, status=status.HTTP_404_NOT_FOUND
@@ -233,7 +214,7 @@ class DownloadFileView(APIView):
 
         try:
             bucket = settings.AWS_STORAGE_BUCKET_NAME
-            object_name = f"user_{user.id}/{file.id}_{file.original_filename}"
+            object_name = f"user_{owner.id}/{file.id}_{file.original_filename}"
 
             response = s3_client.generate_presigned_url(
                 "get_object",
@@ -286,7 +267,6 @@ class ShareFileView(APIView):
     def put(self, request, file_id):
         user = request.user
         received_data = request.data
-        print(received_data)
         try:
             file = FileModel.objects.get(id=file_id)
             serializer = ShareFileSerializer(
