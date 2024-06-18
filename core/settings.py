@@ -84,11 +84,11 @@ WSGI_APPLICATION = "core.wsgi.application"
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.mysql",
-        "NAME": "webfinal",
+        "NAME": config("DB_NAME"),
         "USER": "root",
-        "PASSWORD": "6262",
+        "PASSWORD": config("DB_PASSWORD"),
         "HOST": "localhost",
-        "PORT": "3306",
+        "PORT": config("DB_PORT"),
     }
 }
 
@@ -181,3 +181,6 @@ EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = "bafandehmajid@outlook.com"
 EMAIL_HOST_PASSWORD = "+++ABC78789898+++"
+
+
+STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")

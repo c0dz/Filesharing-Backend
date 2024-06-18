@@ -1,0 +1,32 @@
+services:
+  db:
+    container_name: mysql-container
+    image: mysql:8.0
+    restart: always
+    volumes:
+      - ./mysql:/var/lib/mysql
+    env_file:
+      - ./.env
+    environment:
+      - MYSQL_ROOT_PASSWORD=${DB_ROOT_PASSWORD}
+      - MYSQL_DATABASE=${DB_NAME}
+    ports:
+      - "3305:3306"
+
+  web:
+    container_name: django-web
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - .:/app/
+    env_file:
+      - ./.env
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+
+volumes:
+  mysql_data:

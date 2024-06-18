@@ -15,3 +15,5 @@ static/
 venv/
 .env
 .vscode/
+staticfiles/
+mysql/
