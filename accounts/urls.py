@@ -12,7 +12,8 @@ urlpatterns = [
     path("register/", views.RegisterView.as_view(), name="register"),
     path("verify/", views.VerifyLinkView.as_view(), name="verify_request"),
     path(
-        "verify/<user_id>/<token>/", views.VerifyLinkView.as_view(), name="verify_link"
+        "verification/<user_id>/<token>/", views.VerifyLinkView.as_view(), name="verify_link"
     ),
     path("profile/", views.ProfileView.as_view(), name="profile"),
+    path("validate-access/", views.ValidateAccessView.as_view(), name="validate_access"),
 ]

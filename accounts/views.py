@@ -67,3 +67,13 @@ class ProfileView(APIView):
         serializer = ProfileSerializer(instance=user)
 
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class ValidateAccessView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if request.user.is_active:
+            return Response(status=status.HTTP_200_OK)
+        else:
+            return Response(status=status.HTTP_401_UNAUTHORIZED)

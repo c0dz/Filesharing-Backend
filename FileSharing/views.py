@@ -272,7 +272,7 @@ class ShareFileView(APIView):
 
             serializer.save()
             return Response(
-                {"message": "Sharing List Updated."}, status=status.HTTP_201_CREATED
+                {"message": "Sharing List Updated."}, status=status.HTTP_200_OK
             )
         except FileModel.DoesNotExist:
             return Response(

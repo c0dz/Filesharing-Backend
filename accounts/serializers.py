@@ -117,8 +117,8 @@ class SendVerificationEmailSerializer(serializers.Serializer):
         if not user.exists():
             raise serializers.ValidationError("User does not exist.")
 
-        # if user[0].is_active:
-        #     raise serializers.ValidationError("User is already verified.")
+        if user[0].is_active:
+            raise serializers.ValidationError("User is already verified.")
 
         return attrs
 
@@ -147,7 +147,7 @@ class SendVerificationEmailSerializer(serializers.Serializer):
 
         subject = "Verification Email"
         message = f"Please click the following link to verify your account: {link}"
-        from_email = "abcd@gmail.com"
+        from_email = "bafandehmajid@outlook.com"
         recipient_list = [email]
         send_mail(subject, message, from_email, recipient_list)
 
