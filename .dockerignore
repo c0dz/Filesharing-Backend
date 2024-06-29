@@ -3,3 +3,8 @@
 *.pyd
 __pycache__
 .env
+.git
+.vscode
+venv
+mysql
+staticfiles
