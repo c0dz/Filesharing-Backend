@@ -31,10 +31,10 @@ class FilePermissionModel(models.Model):
     ]
 
     file = models.ForeignKey(
-        FileModel, on_delete=models.CASCADE, related_name="permissions"
+        FileModel, on_delete=models.CASCADE, related_name="file_permissions"
     )
     user = models.ForeignKey(
-        "accounts.UserModel", on_delete=models.CASCADE, related_name="permissions"
+        "accounts.UserModel", on_delete=models.CASCADE, related_name="file_permissions"
     )
     permission = models.CharField(max_length=10, choices=PERMISSION_CHOICES)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -47,3 +47,7 @@ class FilePermissionModel(models.Model):
 
     def __str__(self):
         return f"{self.user} - {self.file}"
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)

@@ -1,3 +1,6 @@
 from django.contrib import admin
 
-# Register your models here.
+from filesharing.models import FileModel, FilePermissionModel
+
+admin.site.register(FileModel)
+admin.site.register(FilePermissionModel)

@@ -14,6 +14,12 @@ class RegisterSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserModel
         fields = ["username", "email", "password", "confirm_password"]
+        extra_kwargs = {
+            "username": {"required": True},
+            "email": {"required": True},
+            "password": {"required": True},
+            "password_confirm": {"required": True},
+        }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -84,7 +90,7 @@ class RegisterSerializer(serializers.ModelSerializer):
         return value
 
     def validate_confirm_password(self, value):
-        if self.initial_data["password"] != value:
+        if self.initial_data.get("password") != value:
             raise serializers.ValidationError("Passwords must match.")
         return value
 
